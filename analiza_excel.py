@@ -46,10 +46,10 @@ def check_mc(column):
         if period_file_duration != period_desc_duration:
             warnings.append("Długość trwania umowy w opisie niezgodna z nazwą pliku")
 
-    return warnings
+    return warnings, period_file_duration, period_desc_duration
 
 
-def data(row_ns):
+def data(row_ns, file_duration, desc_duration):
     """Tworzy słownik z danymi dla danego numeru sprawy CAS"""
     warning = []
     db = {}  # Słownik do którego trafią dane dla poszczególnych PSK/DLC/LD itp
@@ -60,7 +60,7 @@ def data(row_ns):
         if ws[f'N{z}'].value:  # jeżeli komórka zawiera numer lokalizacji
             # print(ws[f'N{z}'].value)
             mc_size = 1  # Marged cell size
-            for w in range(z + 1, w_count):  # Sprawdza ile wierdzy składa się na scaloną komórkę z nr PSK/DLC/itp
+            for w in range(z + 1, w_count):  # Sprawdza ile wierszy składa się na scaloną komórkę z nr PSK/DLC/itp
                 if ws[f'N{w}'].value is None and ws[f'S{w}'].value is not None:
                     mc_size += 1  # Marged cell size
                 else:
@@ -103,10 +103,13 @@ def data(row_ns):
                 db[ws[f'N{z}'].value][ws[f'S{row_ns}'].value][psp][ws[f'Y{row_ns}'].value] = ws[
                     f'Y{x}'].value  # Grupa księgowa
                 if ws[f'X{x}'].value == 'Opex':
-                    if ws[f'U{x}'].value == 1:
-                        warning.append(f"[{ws[f'N{z}'].value}] : [{ws[f'S{x}'].value}] - ilość: {ws[f'U{x}'].value}")
+                    if (ws[f'U{x}'].value != int(file_duration)) or (ws[f'U{x}'].value != int(desc_duration)):
+                        warning.append(f"[{ws[f'N{z}'].value}] : [{psp}] - ilość: {ws[f'U{x}'].value} - "
+                                       f"Porównaj z opisem i nazwą pliku")
                     else:
                         mrc += float(ws[f'V{x}'].value)
+                if ws[f'X{x}'].value == 'Capex':
+                    warning.append(f"[{ws[f'N{z}'].value}] : [{ws[f'S{x}'].value}] - koszt w postaci Capex")
             db[ws[f'N{z}'].value]["Koszt miesięczny sumaryczny"] = mrc
 
     return db, warning
@@ -209,7 +212,8 @@ ws.column_dimensions['H'].width = len(ws['H18'].value)
 ws.column_dimensions['E'].width = 16
 
 col_desc, col_ns, w_count = check_ws(ws)
-res, warn = data(int(col_ns))
+warn_period, file_period, desc_period = check_mc(col_desc)
+res, warn = data(int(col_ns), file_period, desc_period)
 
 show_dict(res, warn)
 
@@ -228,7 +232,7 @@ print(ws[f'C{col_desc}'].value)
 print(Fore.LIGHTYELLOW_EX)
 print("#" * 32, "Opis realizacji", '#' * 32)
 print(Fore.RESET)
-warn_period = check_mc(col_desc)
+# warn_period = check_mc(col_desc)
 show_warnings(warn_period)
 print()
 input("Sprawdź powyższe i wciśnij Enter, aby kontynuować")
