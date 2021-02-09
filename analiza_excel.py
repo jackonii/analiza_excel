@@ -8,21 +8,14 @@ import sys
 import pprint
 from colorama import init, Fore, Back, Style
 
-init()
 
-wb = load_workbook(*sys.argv[1:])
-wb.save(*sys.argv[1:])
-wb.close()
-wb = load_workbook(*sys.argv[1:])
-ws = wb.active
-
-
-def check_mc(column):
+def check_mc(column, worksheet, file_name):
     """Funcja sprawdza czy w opisie realizacji i nazwie pliku jest wskazana ta sama długość umowy"""
+    ws = worksheet
     warnings = []  # Lista do umieszczania komuniktów
     period_desc_duration = False
     period_file_duration = False
-    file = os.path.basename(*sys.argv[1:])
+    file = os.path.basename(file_name)
 
     reg_mc = re.compile(r'_(\d+)mc')  # do wyszukania okresu wariantu w nazwie pliku
     period_file = reg_mc.search(file)
@@ -49,8 +42,9 @@ def check_mc(column):
     return warnings, period_file_duration, period_desc_duration
 
 
-def data(row_ns, file_duration, desc_duration):
+def data(row_ns, file_duration, desc_duration, worksheet, w_count):
     """Tworzy słownik z danymi dla danego numeru sprawy CAS"""
+    ws = worksheet
     warning = []
     db = {}  # Słownik do którego trafią dane dla poszczególnych PSK/DLC/LD itp
     check = {}  # Wykorzystany do rozwiązywania problemu z taką samą nazwą psp dla jednego PSK/DLC/LD itp
@@ -151,6 +145,7 @@ def show_warnings(msg):
 
 
 def check_ws(worksheet):
+    ws = worksheet
     row_count = 0
     col_description = None
     col_numer_sprawy = None
@@ -205,37 +200,107 @@ def check_ws(worksheet):
     return col_description, col_numer_sprawy, row_count
 
 
-ws.column_dimensions['C'].width = 8.5
-ws.row_dimensions[18].height = 25
-ws.column_dimensions['D'].width = len(ws['D18'].value)
-ws.column_dimensions['H'].width = len(ws['H18'].value)
-ws.column_dimensions['E'].width = 16
+def file_processing(file_name):
+    wb = load_workbook(file_name)
+    wb.save(file_name)
+    wb.close()
+    wb = load_workbook(file_name)
+    ws = wb.active
 
-col_desc, col_ns, w_count = check_ws(ws)
-warn_period, file_period, desc_period = check_mc(col_desc)
-res, warn = data(int(col_ns), file_period, desc_period)
+    ws.column_dimensions['C'].width = 8.5
+    ws.row_dimensions[18].height = 25
+    ws.column_dimensions['D'].width = len(ws['D18'].value)
+    ws.column_dimensions['H'].width = len(ws['H18'].value)
+    ws.column_dimensions['E'].width = 16
 
-show_dict(res, warn)
+    col_desc, col_ns, w_count = check_ws(ws)
+    warn_period, file_period, desc_period = check_mc(col_desc, ws, file_name)
+    res, warn = data(int(col_ns), file_period, desc_period, ws, w_count)
+    print()
+    print(Fore.LIGHTYELLOW_EX + "Nazwa pliku: " + Fore.RESET, Fore.LIGHTCYAN_EX, os.path.basename(file_name),
+          Fore.RESET)
+    print(Fore.LIGHTYELLOW_EX + "Lokalizacja: " + Fore.RESET, Fore.LIGHTCYAN_EX, os.path.dirname(file_name),
+          Fore.RESET)
+    print()
+    show_dict(res, warn)
 
-print()
-show_warnings(warn)
-print()
-input("Sprawdź powyższe i wciśnij Enter, aby wyświetlić opis realizacji")
-print()
-print()
-print(Fore.LIGHTYELLOW_EX + "Nazwa pliku: " + Fore.RESET, Fore.LIGHTCYAN_EX, os.path.basename(sys.argv[1]), Fore.RESET)
-print(Fore.LIGHTYELLOW_EX + "Lokalizacja: " + Fore.RESET, Fore.LIGHTCYAN_EX, os.path.dirname(sys.argv[1]), Fore.RESET)
-print(Fore.LIGHTYELLOW_EX)
-print("#" * 32, "Opis realizacji", '#' * 32)
-print(Fore.LIGHTCYAN_EX)
-print(ws[f'C{col_desc}'].value)
-print(Fore.LIGHTYELLOW_EX)
-print("#" * 32, "Opis realizacji", '#' * 32)
-print(Fore.RESET)
-# warn_period = check_mc(col_desc)
-show_warnings(warn_period)
-print()
-input("Sprawdź powyższe i wciśnij Enter, aby kontynuować")
-pyperclip.copy(ws[f'C{col_desc}'].value)
-wb.save(sys.argv[1])
-wb.close()
+    print()
+    show_warnings(warn)
+    print()
+    input("Sprawdź powyższe i wciśnij Enter, aby wyświetlić opis realizacji")
+    print()
+    print()
+    print(Fore.LIGHTYELLOW_EX + "Nazwa pliku: " + Fore.RESET, Fore.LIGHTCYAN_EX, os.path.basename(file_name),
+          Fore.RESET)
+    print(Fore.LIGHTYELLOW_EX + "Lokalizacja: " + Fore.RESET, Fore.LIGHTCYAN_EX, os.path.dirname(file_name),
+          Fore.RESET)
+    print(Fore.LIGHTYELLOW_EX)
+    print("#" * 32, "Opis realizacji", '#' * 32)
+    print(Fore.LIGHTCYAN_EX)
+    print(ws[f'C{col_desc}'].value)
+    print(Fore.LIGHTYELLOW_EX)
+    print("#" * 32, "Opis realizacji", '#' * 32)
+    print(Fore.RESET)
+    # warn_period = check_mc(col_desc)
+    show_warnings(warn_period)
+    print()
+    input("Sprawdź powyższe i wciśnij Enter, aby kontynuować")
+    pyperclip.copy(ws[f'C{col_desc}'].value)
+    wb.save(file_name)
+    wb.close()
+
+
+def variants_check(file_name):
+    """Sprawdza, czy w tym samym katalogu znajdują się inne warianty dla tej samej analizy"""
+    file_name_only = os.path.basename(file_name)
+    service_type = re.search(r'_SDI_|_DLC_|_PSK_', file_name_only)
+    if service_type:
+        client = file_name_only[:file_name_only.find(service_type[0])]
+    else:
+        client = file_name_only
+
+    print(Fore.LIGHTWHITE_EX, Style.BRIGHT)
+    print("Analiza dla Klienta:", client)
+    print()
+    find_file_date = re.compile(r'_\d\d_\d\d_\d\d\d\d')
+    file_date = find_file_date.findall(file_name_only)[0].strip('_')
+    print("Data analizy:", file_date)
+    print()
+    # find_variant = re.compile(r'_W\d_')
+    # variant = find_variant.findall(file_name)[0].strip("_")
+    # print("Wariant: ", variant)
+    all_file_list = os.listdir(os.path.dirname(file_name))
+    # print(all_file_list)
+    files_variants = []
+    for file in all_file_list:
+        if client in file and file_date in file:
+            files_variants.append(file)
+
+    if len(files_variants) > 1:
+        print('Wykryto dodatkowe warianty.')
+        print()
+        for var in files_variants:
+            print(var)
+        print()
+        ask = input("Czy uwzględnić (t/n)? ")
+        print()
+        if ask.lower() == 't':
+            print('Procesuję wszystkie warianty.')
+            print()
+            for var in files_variants:
+                file_processing(os.path.join(os.path.dirname(file_name), var))
+        else:
+            print('Procesuję wybrany wariant:', os.path.basename(file_name))
+            file_processing(file_name)
+    else:
+        file_processing(file_name)
+    print(Fore.RESET + Back.RESET)
+
+
+def main():
+    init()
+    filename = sys.argv[1]
+    variants_check(filename)
+
+
+main()
