@@ -200,7 +200,7 @@ def check_ws(worksheet):
     return col_description, col_numer_sprawy, row_count
 
 
-def file_processing(file_name):
+def file_processing(file_name, var_count=0, variants=None):
     wb = load_workbook(file_name)
     wb.save(file_name)
     wb.close()
@@ -245,7 +245,11 @@ def file_processing(file_name):
     show_warnings(warn_period)
     print()
     input("Sprawdź powyższe i wciśnij Enter, aby kontynuować")
-    pyperclip.copy(ws[f'C{col_desc}'].value)
+    if variants:
+        if var_count == len(variants):
+            pyperclip.copy('\n'.join(variants) + '\n\n' + ws[f'C{col_desc}'].value)
+    else:
+        pyperclip.copy(ws[f'C{col_desc}'].value)
     wb.save(file_name)
     wb.close()
 
@@ -253,7 +257,7 @@ def file_processing(file_name):
 def variants_check(file_name):
     """Sprawdza, czy w tym samym katalogu znajdują się inne warianty dla tej samej analizy"""
     file_name_only = os.path.basename(file_name)
-    service_type = re.search(r'_SDI_|_DLC_|_PSK_', file_name_only)
+    service_type = re.search(r'_SDI_|_DLC_|_PSK_', file_name_only, re.IGNORECASE)
     if service_type:
         client = file_name_only[:file_name_only.find(service_type[0])]
     else:
@@ -266,11 +270,8 @@ def variants_check(file_name):
     file_date = find_file_date.findall(file_name_only)[0].strip('_')
     print("Data analizy:", file_date)
     print()
-    # find_variant = re.compile(r'_W\d_')
-    # variant = find_variant.findall(file_name)[0].strip("_")
-    # print("Wariant: ", variant)
     all_file_list = os.listdir(os.path.dirname(file_name))
-    # print(all_file_list)
+
     files_variants = []
     for file in all_file_list:
         if client in file and file_date in file:
@@ -287,8 +288,11 @@ def variants_check(file_name):
         if ask.lower() == 't':
             print('Procesuję wszystkie warianty.')
             print()
+            variants_count = len(files_variants)  # liczba wszystkich wariantów
+            variants = []  # lista z opisami poszczególnych wariantów
             for var in files_variants:
-                file_processing(os.path.join(os.path.dirname(file_name), var))
+                variants.append(variants_text(var, variants))  # Dodaje do listy opisy poszczególnych wariantów
+                file_processing(os.path.join(os.path.dirname(file_name), var), variants_count, variants)
         else:
             print('Procesuję wybrany wariant:', os.path.basename(file_name))
             file_processing(file_name)
@@ -297,9 +301,34 @@ def variants_check(file_name):
     print(Fore.RESET + Back.RESET)
 
 
+def variants_text(var, variants):
+    """Generuje którki opis wariantu"""
+    w = os.path.basename(var)
+    try:
+        variant = re.search(r'_[W|w]\d*_', w)[0].strip('_')
+    except TypeError:
+        variant = "W" + str(len(variants)+1)
+    try:
+        service = re.search(r'_SDI|_DLC|_PSK_', w, re.IGNORECASE)[0].strip('_').upper()
+    except TypeError:
+        service = "???"
+    try:
+        speed = re.search(r'_\d*M_', w)[0].strip('_')
+    except TypeError:
+        speed = "??Mbps"
+    try:
+        period = re.search(r'_\d*mc_', w)[0].strip('_')
+    except TypeError:
+        period = "??mc"
+    # pattern = re.compile(r'(_SDI|_DLC|_PSK)(_W\d*_)(\d*M_)(\d*mc_)')
+    # return pattern.search(w).group(2).strip('_') + ": " + pattern.search(w).group(1).strip('_') + " " + \
+    #     pattern.search(w).group(3).strip('_') + " - umowa na okres " + pattern.search(w).group(4).strip('_')
+    return variant + ": " + service + " " + speed + " - umowa na " + period
+
 def main():
     init()
     filename = sys.argv[1]
+
     variants_check(filename)
 
 
